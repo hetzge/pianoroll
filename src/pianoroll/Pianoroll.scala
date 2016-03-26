@@ -25,6 +25,22 @@ import javafx.scene.control.Button
 import javafx.scene.input.MouseButton
 import javafx.scene.Parent
 
+object Logger {
+
+  def debug(messages: Any*) = {
+    println(messages)
+  }
+
+  def info(messages: Any*) = {
+    println(messages)
+  }
+
+  def error(messages: Any*) = {
+    println(messages)
+  }
+
+}
+
 case class Position(val x: Int, val y: Int) {
 
   def eachX(length: Int)(consumer: (Position) => Unit): Unit = (x until (x + length)).map(Position(_, y)).foreach(consumer)
@@ -131,6 +147,8 @@ class Pattern(val parentOption: Option[Pattern] = None) {
   }
 
   def draw(from: Position, to: Position) = {
+    Logger.debug("draw", from, to)
+
     val length = to.x - from.x
 
     var startPositionOption: Option[Position] = None
@@ -161,6 +179,8 @@ class Pattern(val parentOption: Option[Pattern] = None) {
   }
 
   def remove(from: Position, to: Position) = {
+    Logger.debug("remove", from, to)
+
     val length = to.x - from.x;
 
     from.eachX(length) { positionI =>
@@ -168,32 +188,44 @@ class Pattern(val parentOption: Option[Pattern] = None) {
         removeTone(tone)
         if (tone.calculatedPosition.x < from.x && tone.calculatedPosition.x + tone.calculatedLength > from.x + length) {
           // split
+          Logger.debug("remove split")
+
           val oldLength = tone.calculatedLength
           tone.setLength(tone.length - (tone.calculatedPosition.x + tone.calculatedLength - from.x))
           addTone(new Tone(Pattern.this, Position(tone.position.x + tone.length + length, tone.position.y), oldLength - length - tone.length, tone.parentOption))
 
           addTone(tone)
-        } else if (tone.calculatedPosition.x < from.x && tone.calculatedPosition.x + tone.calculatedLength < from.x + length) {
+        } else if (tone.calculatedPosition.x < from.x && tone.calculatedPosition.x + tone.calculatedLength <= from.x + length) {
           // shorter
+          Logger.debug("remove shorter")
+
           tone.setLength(from.x - tone.calculatedPosition.x)
 
           addTone(tone)
         } else if (tone.calculatedPosition.x >= from.x && tone.calculatedPosition.x + tone.calculatedLength <= from.x + length) {
           // remove
+          Logger.debug("remove remove")
+
           removeTone(tone)
         } else if (tone.calculatedPosition.x < from.x + length && tone.calculatedPosition.x + tone.calculatedLength > from.x + length) {
           // move and shorter
+          Logger.debug("remove move and shorter")
+
           val offset = from.x + length - positionI.x
           tone.setLength(tone.length - offset)
           tone.setX(tone.position.x + offset)
 
           addTone(tone)
+        } else {
+          throw new IllegalStateException("Unknown how to handle remove")
         }
       }
     }
   }
 
   def move(from: Position, to: Position) = {
+    Logger.debug("move", from, to)
+
     getTone(from).foreach { tone =>
       removeTone(tone)
       val offset = to.x - from.x
@@ -204,6 +236,8 @@ class Pattern(val parentOption: Option[Pattern] = None) {
   }
 
   def stretch(from: Position, to: Position) = {
+    Logger.debug("stretch", from, to)
+
     getTone(from).foreach { tone =>
       removeTone(tone)
       val offset = to.x - from.x
@@ -357,7 +391,7 @@ class Spec extends FunSuite with Matchers {
     patternA.addTone(toneA)
 
     patternA.remove(Position(5, 2), Position(8, 2))
-    
+
     patternA.getTone(toneAPosition) should be(Some(toneA))
     patternA.getTone(Position(5, 2)) should be(None)
     patternA.getTone(Position(4, 2)) should be(Some(toneA))
