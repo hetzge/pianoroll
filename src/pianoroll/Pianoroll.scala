@@ -74,7 +74,7 @@ class Pattern(val parentOption: Option[Pattern] = None) {
     val from = if (fromParameter.x > toParameter.x) toParameter else fromParameter
     val to = if (toParameter.x < fromParameter.x) fromParameter else toParameter
 
-    println("action", from, to, leftMouseButton, rightMouseButton, strgKey)
+    Logger.debug("action", from, to, leftMouseButton, rightMouseButton, strgKey)
 
     if (leftMouseButton) {
       if (getTone(fromParameter).isDefined) {
@@ -244,6 +244,10 @@ class Pattern(val parentOption: Option[Pattern] = None) {
       tone.setLength(tone.length + offset)
       addTone(tone)
     }
+  }
+
+  def connect(from: Position, to: Position) = {
+    // TODO (on strg)
   }
 
 }
@@ -455,29 +459,35 @@ class Spec extends FunSuite with Matchers {
     val patternA = new Pattern()
 
     patternA.draw(Position(2, 2), Position(3, 2))
+
     patternA.getTone(Position(2, 2)) should not be (None)
     patternA.getTone(Position(3, 2)) should be(None)
 
     patternA.move(Position(2, 2), Position(4, 4))
+
     patternA.getTone(Position(2, 2)) should be(None)
     patternA.getTone(Position(4, 4)) should not be (None)
     patternA.getTone(Position(5, 4)) should be(None)
     patternA.getTone(Position(3, 4)) should be(None)
 
     patternA.stretch(Position(4, 4), Position(6, 4))
+
     patternA.getTone(Position(4, 4)) should not be (None)
     patternA.getTone(Position(5, 4)) should not be (None)
     patternA.getTone(Position(6, 4)) should not be (None)
     patternA.getTone(Position(7, 4)) should be(None)
     patternA.getTone(Position(3, 4)) should be(None)
+    patternA.getTone(Position(4, 4)) should be(patternA.getTone(Position(6, 4)))
 
     patternA.remove(Position(5, 4), Position(6, 4))
+
     patternA.getTone(Position(4, 4)) should not be (None)
     patternA.getTone(Position(5, 4)) should be(None)
     patternA.getTone(Position(6, 4)) should not be (None)
 
     patternA.remove(Position(4, 4), Position(5, 4))
     patternA.remove(Position(6, 4), Position(7, 4))
+
     patternA.getTone(Position(4, 4)) should be(None)
     patternA.getTone(Position(5, 4)) should be(None)
     patternA.getTone(Position(6, 4)) should be(None)
@@ -486,7 +496,6 @@ class Spec extends FunSuite with Matchers {
 }
 
 class JavaFxApp extends Application {
-  println("Test()")
 
   override def start(primaryStage: Stage) {
     primaryStage.setTitle("Sup!")
@@ -494,15 +503,12 @@ class JavaFxApp extends Application {
     val root = new StackPane()
 
     val canvas = new PianoRollCanvas()
-    canvas.setWidth(800)
-    canvas.setHeight(800)
 
     root.getChildren.add(canvas)
     root.getChildren.add(KeyHelper)
 
     primaryStage.setScene(new JavaFxAppScene(root))
     primaryStage.show()
-
   }
 
   class JavaFxAppScene(root: Parent) extends Scene(root, 800, 800) {
@@ -521,9 +527,12 @@ class JavaFxApp extends Application {
     val toneAPositon = Position(0, 0)
     val toneA = new Tone(pattern, toneAPositon, 8)
     pattern.addTone(toneA)
+    
+    setWidth(800)
+    setHeight(800)
 
     def render() = {
-      println("render")
+      Logger.debug("render")
 
       renderBackground()
       renderGrid()
@@ -570,44 +579,74 @@ class JavaFxApp extends Application {
       }
     }
 
-    var dragFrom = Position(0, 0)
+    var dragFromOption: Option[Position] = None
+    var click = false
 
     setOnDragDetected(new EventHandler[MouseEvent]() {
       override def handle(mouseEvent: MouseEvent) = {
+        println("drag detected")
         startFullDrag();
+        click = false
 
         val dragFromX = toXGridPosition(mouseEvent.getX())
         val dragFromY = toYGridPosition(mouseEvent.getY())
 
-        dragFrom = Position(dragFromX, dragFromY)
+        dragFromOption = Some(Position(dragFromX, dragFromY))
+
+        mouseEvent.consume()
       }
     })
 
     setOnMouseDragReleased(new EventHandler[MouseDragEvent]() {
       override def handle(mouseEvent: MouseDragEvent) = {
-        val dragToX = toXGridPosition(mouseEvent.getX())
-        val dragToY = toYGridPosition(mouseEvent.getY())
+        println("drag released")
+        if (dragFromOption.isDefined) {
 
-        val dragTo = Position(dragToX + 1, dragToY)
+          val dragFrom = dragFromOption.get
 
-        pattern.action(dragFrom, dragTo, mouseEvent.getButton().equals(MouseButton.PRIMARY), mouseEvent.getButton().equals(MouseButton.SECONDARY), KeyHelper.isKeyPressed(KeyCode.CONTROL.ordinal()))
+          val dragToX = toXGridPosition(mouseEvent.getX())
+          val dragToY = toYGridPosition(mouseEvent.getY())
+
+          val dragTo = Position(dragToX + 1, dragToY)
+
+          action(dragFrom, dragTo, mouseEvent.getButton().equals(MouseButton.PRIMARY), mouseEvent.getButton().equals(MouseButton.SECONDARY), KeyHelper.isKeyPressed(KeyCode.CONTROL.ordinal()))
+
+          println("drag")
+
+          mouseEvent.consume()
+          dragFromOption = None
+        }
       }
     })
 
-    setOnMouseClicked(new EventHandler[MouseEvent]() {
+    setOnMousePressed(new EventHandler[MouseEvent]() {
       override def handle(mouseEvent: MouseEvent) = {
+        println("pressed")
+        click = true
+      }
+    })
 
-        val x = toXGridPosition(mouseEvent.getX())
-        val y = toYGridPosition(mouseEvent.getY())
+    setOnMouseReleased(new EventHandler[MouseEvent]() {
+      override def handle(mouseEvent: MouseEvent) = {
+        println("released")
+        if (click) {
 
-        val position = Position(x, y)
-        
-        action(position, position.copy(x = position.x + 1), mouseEvent.getButton().equals(MouseButton.PRIMARY), mouseEvent.getButton().equals(MouseButton.SECONDARY), KeyHelper.isKeyPressed(KeyCode.CONTROL.ordinal()))
+          val x = toXGridPosition(mouseEvent.getX())
+          val y = toYGridPosition(mouseEvent.getY())
+
+          val position = Position(x, y)
+
+          action(position, position.copy(x = position.x + 1), mouseEvent.getButton().equals(MouseButton.PRIMARY), mouseEvent.getButton().equals(MouseButton.SECONDARY), KeyHelper.isKeyPressed(KeyCode.CONTROL.ordinal()))
+
+          mouseEvent.consume()
+        }
       }
     })
 
     def action(from: Position, to: Position, leftMouseButton: Boolean, rightMouseButton: Boolean, strgKey: Boolean) {
+      println("Action ... gleich")
       pattern.action(from, to, leftMouseButton, rightMouseButton, strgKey)
+      println("Action ... jetzt")
       render()
     }
 
