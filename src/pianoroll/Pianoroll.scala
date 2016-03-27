@@ -69,12 +69,16 @@ class Pattern(val parentOption: Option[Pattern] = None) {
    */
   private val tones: ToneSet = scala.collection.mutable.HashSet()
 
-  def action(fromParameter: Position, toParameter: Position, leftMouseButton: Boolean, rightMouseButton: Boolean, strgKey: Boolean) = {
+  
+  /**
+   * TODO move this logic to gui code
+   */
+  def action(fromParameter: Position, toParameter: Position, leftMouseButton: Boolean, rightMouseButton: Boolean, strgKey: Boolean, altKey: Boolean) = {
 
     val from = if (fromParameter.x > toParameter.x) toParameter else fromParameter
     val to = if (toParameter.x < fromParameter.x) fromParameter else toParameter
 
-    Logger.debug("action", from, to, leftMouseButton, rightMouseButton, strgKey)
+    Logger.debug("action", from, to, leftMouseButton, rightMouseButton, strgKey, altKey)
 
     if (leftMouseButton) {
       if (getTone(fromParameter).isDefined) {
@@ -322,6 +326,19 @@ class Spec extends FunSuite with Matchers {
     patternB.getTone(Position(3, 3)) should be(Some(toneB))
   }
 
+  test("draw tone on blank") {
+    val patternA = new Pattern()
+    
+    patternA.draw(Position(3, 3), Position(6, 3))
+    
+    Position(3, 3).eachX(3){ position =>
+      patternA.getTone(position) should not be (None)
+    }
+    
+    patternA.getTone(Position(2, 3)) should be(None)
+    patternA.getTone(Position(6, 3)) should be(None)
+  }
+  
   test("draw tone with existing in front, middle and at the end") {
     val patternA = new Pattern()
     val toneA = new Tone(patternA, Position(0, 2), 2)
@@ -609,7 +626,7 @@ class JavaFxApp extends Application {
 
           val dragTo = Position(dragToX + 1, dragToY)
 
-          action(dragFrom, dragTo, mouseEvent.getButton().equals(MouseButton.PRIMARY), mouseEvent.getButton().equals(MouseButton.SECONDARY), KeyHelper.isKeyPressed(KeyCode.CONTROL.ordinal()))
+          action(dragFrom, dragTo, mouseEvent.getButton().equals(MouseButton.PRIMARY), mouseEvent.getButton().equals(MouseButton.SECONDARY), KeyHelper.isKeyPressed(KeyCode.CONTROL.ordinal()), KeyHelper.isKeyPressed(KeyCode.ALT.ordinal()))
 
           println("drag")
 
@@ -636,17 +653,15 @@ class JavaFxApp extends Application {
 
           val position = Position(x, y)
 
-          action(position, position.copy(x = position.x + 1), mouseEvent.getButton().equals(MouseButton.PRIMARY), mouseEvent.getButton().equals(MouseButton.SECONDARY), KeyHelper.isKeyPressed(KeyCode.CONTROL.ordinal()))
+          action(position, position.copy(x = position.x + 1), mouseEvent.getButton().equals(MouseButton.PRIMARY), mouseEvent.getButton().equals(MouseButton.SECONDARY), KeyHelper.isKeyPressed(KeyCode.CONTROL.ordinal()), KeyHelper.isKeyPressed(KeyCode.ALT.ordinal()))
 
           mouseEvent.consume()
         }
       }
     })
 
-    def action(from: Position, to: Position, leftMouseButton: Boolean, rightMouseButton: Boolean, strgKey: Boolean) {
-      println("Action ... gleich")
-      pattern.action(from, to, leftMouseButton, rightMouseButton, strgKey)
-      println("Action ... jetzt")
+    def action(from: Position, to: Position, leftMouseButton: Boolean, rightMouseButton: Boolean, strgKey: Boolean, altKey: Boolean) {
+      pattern.action(from, to, leftMouseButton, rightMouseButton, strgKey, altKey)
       render()
     }
 
