@@ -28,15 +28,15 @@ import javafx.scene.Parent
 object Logger {
 
   def debug(messages: Any*) = {
-    println(messages)
+    println("debug => " + messages.mkString(", "))
   }
 
   def info(messages: Any*) = {
-    println(messages)
+    println("info => " + messages.mkString(", "))
   }
 
   def error(messages: Any*) = {
-    println(messages)
+    println("error => " + messages.mkString(", "))
   }
 
 }
@@ -451,6 +451,38 @@ class Spec extends FunSuite with Matchers {
     patternA.getTone(toneAPositon) should be(Some(toneA))
   }
 
+  test("single tone") {
+    val patternA = new Pattern()
+
+    patternA.draw(Position(2, 2), Position(3, 2))
+    patternA.getTone(Position(2, 2)) should not be (None)
+    patternA.getTone(Position(3, 2)) should be(None)
+
+    patternA.move(Position(2, 2), Position(4, 4))
+    patternA.getTone(Position(2, 2)) should be(None)
+    patternA.getTone(Position(4, 4)) should not be (None)
+    patternA.getTone(Position(5, 4)) should be(None)
+    patternA.getTone(Position(3, 4)) should be(None)
+
+    patternA.stretch(Position(4, 4), Position(6, 4))
+    patternA.getTone(Position(4, 4)) should not be (None)
+    patternA.getTone(Position(5, 4)) should not be (None)
+    patternA.getTone(Position(6, 4)) should not be (None)
+    patternA.getTone(Position(7, 4)) should be(None)
+    patternA.getTone(Position(3, 4)) should be(None)
+
+    patternA.remove(Position(5, 4), Position(6, 4))
+    patternA.getTone(Position(4, 4)) should not be (None)
+    patternA.getTone(Position(5, 4)) should be(None)
+    patternA.getTone(Position(6, 4)) should not be (None)
+
+    patternA.remove(Position(4, 4), Position(5, 4))
+    patternA.remove(Position(6, 4), Position(7, 4))
+    patternA.getTone(Position(4, 4)) should be(None)
+    patternA.getTone(Position(5, 4)) should be(None)
+    patternA.getTone(Position(6, 4)) should be(None)
+  }
+
 }
 
 class JavaFxApp extends Application {
@@ -556,7 +588,7 @@ class JavaFxApp extends Application {
         val dragToX = toXGridPosition(mouseEvent.getX())
         val dragToY = toYGridPosition(mouseEvent.getY())
 
-        val dragTo = Position(dragToX, dragToY)
+        val dragTo = Position(dragToX + 1, dragToY)
 
         pattern.action(dragFrom, dragTo, mouseEvent.getButton().equals(MouseButton.PRIMARY), mouseEvent.getButton().equals(MouseButton.SECONDARY), KeyHelper.isKeyPressed(KeyCode.CONTROL.ordinal()))
       }
@@ -565,7 +597,12 @@ class JavaFxApp extends Application {
     setOnMouseClicked(new EventHandler[MouseEvent]() {
       override def handle(mouseEvent: MouseEvent) = {
 
-        action(dragFrom, dragFrom, mouseEvent.getButton().equals(MouseButton.PRIMARY), mouseEvent.getButton().equals(MouseButton.SECONDARY), KeyHelper.isKeyPressed(KeyCode.CONTROL.ordinal()))
+        val x = toXGridPosition(mouseEvent.getX())
+        val y = toYGridPosition(mouseEvent.getY())
+
+        val position = Position(x, y)
+        
+        action(position, position.copy(x = position.x + 1), mouseEvent.getButton().equals(MouseButton.PRIMARY), mouseEvent.getButton().equals(MouseButton.SECONDARY), KeyHelper.isKeyPressed(KeyCode.CONTROL.ordinal()))
       }
     })
 
