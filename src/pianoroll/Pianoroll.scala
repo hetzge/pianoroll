@@ -69,32 +69,6 @@ class Pattern(val parentOption: Option[Pattern] = None) {
    */
   private val tones: ToneSet = scala.collection.mutable.HashSet()
 
-  /**
-   * TODO move this logic to gui code
-   */
-  def action(fromParameter: Position, toParameter: Position, leftMouseButton: Boolean, rightMouseButton: Boolean, strgKey: Boolean, altKey: Boolean) = {
-
-    val from = if (fromParameter.x > toParameter.x) toParameter else fromParameter
-    val to = if (toParameter.x < fromParameter.x) fromParameter else toParameter
-
-    Logger.debug("action", from, to, leftMouseButton, rightMouseButton, strgKey, altKey)
-
-    if (leftMouseButton) {
-      if (getTone(fromParameter).isDefined) {
-        if (strgKey) {
-          stretch(fromParameter, toParameter)
-        } else {
-          move(fromParameter, toParameter)
-        }
-      } else {
-        draw(from, to)
-      }
-    } else if (rightMouseButton) {
-      remove(from, to)
-    }
-
-  }
-
   def redraw() = {
     tonesByPosition.clear()
     tonesById.clear()
@@ -423,7 +397,7 @@ class JavaFxApp extends Application {
 
           val dragTo = Position(dragToX + 1, dragToY)
 
-          action(dragFrom, dragTo, mouseEvent.getButton().equals(MouseButton.PRIMARY), mouseEvent.getButton().equals(MouseButton.SECONDARY), KeyHelper.isKeyPressed(KeyCode.CONTROL.ordinal()), KeyHelper.isKeyPressed(KeyCode.ALT.ordinal()))
+          action(dragFrom, dragTo, mouseEvent.getButton().equals(MouseButton.PRIMARY), mouseEvent.getButton().equals(MouseButton.SECONDARY))
 
           println("drag")
 
@@ -450,16 +424,39 @@ class JavaFxApp extends Application {
 
           val position = Position(x, y)
 
-          action(position, position.copy(x = position.x + 1), mouseEvent.getButton().equals(MouseButton.PRIMARY), mouseEvent.getButton().equals(MouseButton.SECONDARY), KeyHelper.isKeyPressed(KeyCode.CONTROL.ordinal()), KeyHelper.isKeyPressed(KeyCode.ALT.ordinal()))
+          action(position, position.copy(x = position.x + 1), mouseEvent.getButton().equals(MouseButton.PRIMARY), mouseEvent.getButton().equals(MouseButton.SECONDARY))
 
           mouseEvent.consume()
         }
       }
     })
 
-    def action(from: Position, to: Position, leftMouseButton: Boolean, rightMouseButton: Boolean, strgKey: Boolean, altKey: Boolean) {
-      pattern.action(from, to, leftMouseButton, rightMouseButton, strgKey, altKey)
+    def action(fromParameter: Position, toParameter: Position, leftMouseButton: Boolean, rightMouseButton: Boolean) = {
+
+      val from = if (fromParameter.x > toParameter.x) toParameter else fromParameter
+      val to = if (toParameter.x < fromParameter.x) fromParameter else toParameter
+
+      val strgKey = KeyHelper.isKeyPressed(KeyCode.CONTROL.ordinal())
+      val altKey = KeyHelper.isKeyPressed(KeyCode.ALT.ordinal())
+
+      Logger.debug("action", from, to, leftMouseButton, rightMouseButton, strgKey, altKey)
+
+      if (leftMouseButton) {
+        if (pattern.getTone(fromParameter).isDefined) {
+          if (strgKey) {
+            pattern.stretch(fromParameter, toParameter)
+          } else {
+            pattern.move(fromParameter, toParameter)
+          }
+        } else {
+          pattern.draw(from, to)
+        }
+      } else if (rightMouseButton) {
+        pattern.remove(from, to)
+      }
+
       render()
+
     }
 
     def toXGridPosition(value: Double) = (value / horizontalScale).toInt
