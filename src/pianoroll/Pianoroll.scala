@@ -69,7 +69,6 @@ class Pattern(val parentOption: Option[Pattern] = None) {
    */
   private val tones: ToneSet = scala.collection.mutable.HashSet()
 
-  
   /**
    * TODO move this logic to gui code
    */
@@ -309,6 +308,291 @@ class Tone(val owner: Pattern, private var _position: Position, private var _len
 
 }
 
+class JavaFxApp extends Application {
+
+  override def start(primaryStage: Stage) {
+    primaryStage.setTitle("Sup!")
+
+    val root = new StackPane()
+
+    val pianoRollCanvas = new PianoRollCanvas()
+
+    root.getChildren().add(pianoRollCanvas)
+    root.getChildren().add(pianoRollCanvas.OverlayCanvas)
+    root.getChildren().add(KeyHelper)
+
+    primaryStage.setScene(new JavaFxAppScene(root))
+    primaryStage.show()
+  }
+
+  class JavaFxAppScene(root: Parent) extends Scene(root, 800, 800) {
+    setOnKeyPressed(KeyHelper.pressedHandler)
+    setOnKeyReleased(KeyHelper.releasedHandler)
+  }
+
+  class PianoRollCanvas extends Canvas {
+
+    val graphicsContext = getGraphicsContext2D()
+    var cameraPosition = Position(0, 0)
+    var horizontalScale: Int = 10
+    var verticalScale: Int = 20
+
+    val pattern = new Pattern()
+    val toneAPositon = Position(0, 0)
+    val toneA = new Tone(pattern, toneAPositon, 8)
+    pattern.addTone(toneA)
+
+    setWidth(800)
+    setHeight(800)
+
+    def render() = {
+      Logger.debug("render")
+
+      renderBackground()
+      renderGrid()
+      renderPattern()
+    }
+
+    def renderBackground() = {
+      graphicsContext.clearRect(0, 0, getWidth(), getHeight())
+    }
+
+    def renderGrid() = {
+      graphicsContext.setLineWidth(1.0d)
+      graphicsContext.setStroke(Color.WHITE.darker())
+
+      for (x <- cameraPosition.x / horizontalScale to cameraPosition.x + getWidth().toInt) {
+        graphicsContext.strokeLine(x * horizontalScale, 0, x * horizontalScale, getHeight())
+      }
+
+      graphicsContext.setLineWidth(1.0d)
+      graphicsContext.setStroke(Color.WHITE.darker().darker())
+
+      for (y <- cameraPosition.y / verticalScale to cameraPosition.y + getHeight().toInt) {
+        graphicsContext.strokeLine(0, y * verticalScale, getWidth(), y * verticalScale)
+      }
+    }
+
+    def renderPattern() = {
+      val verticalOffset = 2
+
+      for (x <- cameraPosition.x / horizontalScale to cameraPosition.x + getWidth().toInt) {
+        for (y <- cameraPosition.y / verticalScale to cameraPosition.y + getHeight().toInt) {
+          val position = Position(x, y)
+
+          pattern.getTone(position).foreach { tone =>
+            graphicsContext.setFill(Color.RED)
+            graphicsContext.fillRect(x * horizontalScale, y * verticalScale + verticalOffset, horizontalScale, verticalScale - verticalOffset * 2)
+
+            if (tone.calculatedPosition.equals(position)) {
+              graphicsContext.setFill(Color.BLUE.brighter())
+              graphicsContext.fillRect(x * horizontalScale, y * verticalScale, 3, verticalScale)
+            }
+          }
+        }
+      }
+    }
+
+    var dragFromOption: Option[Position] = None
+    var click = false
+
+    setOnDragDetected(new EventHandler[MouseEvent]() {
+      override def handle(mouseEvent: MouseEvent) = {
+        println("drag detected")
+        startFullDrag();
+        click = false
+
+        val dragFromX = toXGridPosition(mouseEvent.getX())
+        val dragFromY = toYGridPosition(mouseEvent.getY())
+
+        dragFromOption = Some(Position(dragFromX, dragFromY))
+
+        mouseEvent.consume()
+      }
+    })
+
+    setOnMouseDragReleased(new EventHandler[MouseDragEvent]() {
+      override def handle(mouseEvent: MouseDragEvent) = {
+        println("drag released")
+        if (dragFromOption.isDefined) {
+
+          val dragFrom = dragFromOption.get
+
+          val dragToX = toXGridPosition(mouseEvent.getX())
+          val dragToY = toYGridPosition(mouseEvent.getY())
+
+          val dragTo = Position(dragToX + 1, dragToY)
+
+          action(dragFrom, dragTo, mouseEvent.getButton().equals(MouseButton.PRIMARY), mouseEvent.getButton().equals(MouseButton.SECONDARY), KeyHelper.isKeyPressed(KeyCode.CONTROL.ordinal()), KeyHelper.isKeyPressed(KeyCode.ALT.ordinal()))
+
+          println("drag")
+
+          mouseEvent.consume()
+          dragFromOption = None
+        }
+      }
+    })
+
+    setOnMousePressed(new EventHandler[MouseEvent]() {
+      override def handle(mouseEvent: MouseEvent) = {
+        println("pressed")
+        click = true
+      }
+    })
+
+    setOnMouseReleased(new EventHandler[MouseEvent]() {
+      override def handle(mouseEvent: MouseEvent) = {
+        println("released")
+        if (click) {
+
+          val x = toXGridPosition(mouseEvent.getX())
+          val y = toYGridPosition(mouseEvent.getY())
+
+          val position = Position(x, y)
+
+          action(position, position.copy(x = position.x + 1), mouseEvent.getButton().equals(MouseButton.PRIMARY), mouseEvent.getButton().equals(MouseButton.SECONDARY), KeyHelper.isKeyPressed(KeyCode.CONTROL.ordinal()), KeyHelper.isKeyPressed(KeyCode.ALT.ordinal()))
+
+          mouseEvent.consume()
+        }
+      }
+    })
+
+    def action(from: Position, to: Position, leftMouseButton: Boolean, rightMouseButton: Boolean, strgKey: Boolean, altKey: Boolean) {
+      pattern.action(from, to, leftMouseButton, rightMouseButton, strgKey, altKey)
+      render()
+    }
+
+    def toXGridPosition(value: Double) = (value / horizontalScale).toInt
+    def toYGridPosition(value: Double) = (value / verticalScale).toInt
+
+    def toXRenderPosition(value: Int) = value * horizontalScale
+    def toYRenderPosition(value: Int) = value * verticalScale
+
+    object OverlayCanvas extends Canvas {
+      val graphicsContext = getGraphicsContext2D()
+
+      widthProperty().bind(PianoRollCanvas.this.widthProperty())
+      heightProperty().bind(PianoRollCanvas.this.heightProperty())
+
+      setOnMouseMoved(new EventHandler[MouseEvent]() {
+        override def handle(mouseEvent: MouseEvent) = {
+          render(mouseEvent)
+          PianoRollCanvas.this.fireEvent(mouseEvent)
+        }
+      })
+
+      setOnMouseClicked(new EventHandler[MouseEvent]() {
+        override def handle(mouseEvent: MouseEvent) = {
+          PianoRollCanvas.this.fireEvent(mouseEvent)
+        }
+      })
+
+      setOnMousePressed(new EventHandler[MouseEvent]() {
+        override def handle(mouseEvent: MouseEvent) = {
+          PianoRollCanvas.this.fireEvent(mouseEvent)
+        }
+      })
+
+      setOnMouseReleased(new EventHandler[MouseEvent]() {
+        override def handle(mouseEvent: MouseEvent) = {
+          PianoRollCanvas.this.fireEvent(mouseEvent)
+        }
+      })
+
+      setOnDragDetected(new EventHandler[MouseEvent]() {
+        override def handle(mouseEvent: MouseEvent) = {
+          PianoRollCanvas.this.fireEvent(mouseEvent)
+        }
+      })
+
+      setOnMouseDragReleased(new EventHandler[MouseEvent]() {
+        override def handle(mouseEvent: MouseEvent) = {
+          PianoRollCanvas.this.fireEvent(mouseEvent)
+        }
+      })
+
+      setOnMouseDragged(new EventHandler[MouseEvent]() {
+        override def handle(mouseEvent: MouseEvent) = {
+          render(mouseEvent)
+          PianoRollCanvas.this.fireEvent(mouseEvent)
+        }
+      })
+
+      def render(mouseEvent: MouseEvent) = {
+        renderBackground()
+        renderCurrentCell(mouseEvent)
+        renderCurrentDraw(mouseEvent)
+      }
+
+      def renderBackground() = {
+        graphicsContext.clearRect(0, 0, getWidth(), getHeight())
+      }
+
+      def renderCurrentCell(mouseEvent: MouseEvent) = {
+        val x = mouseEvent.getX()
+        val y = mouseEvent.getY()
+
+        val gridX = toXGridPosition(x)
+        val gridY = toYGridPosition(y)
+
+        graphicsContext.setFill(new Color(0.5d, 0.5d, 0.5d, 0.5d))
+        graphicsContext.fillRect(gridX * horizontalScale, gridY * verticalScale, horizontalScale, verticalScale)
+      }
+
+      def renderCurrentDraw(mouseEvent: MouseEvent) = {
+        if (dragFromOption.isDefined) {
+
+          val x = mouseEvent.getX()
+          val y = mouseEvent.getY()
+
+          val gridX = toXGridPosition(x)
+          val gridY = toYGridPosition(y)
+
+          val dragFromPosition = dragFromOption.get
+
+          val fromX = Math.min(gridX, dragFromPosition.x) * horizontalScale
+          val width = Math.abs(gridX - dragFromPosition.x) * horizontalScale
+
+          graphicsContext.setFill(new Color(1.0d, 0.5d, 0.5d, 0.5d))
+          graphicsContext.fillRect(fromX, gridY * verticalScale, width, verticalScale)
+        }
+      }
+
+    }
+
+    render()
+  }
+
+}
+
+object KeyHelper extends Canvas {
+
+  val pressedKeys = new BitSet()
+
+  val pressedHandler = new EventHandler[KeyEvent]() {
+    override def handle(event: KeyEvent) = {
+      println(event.getCode())
+      pressedKeys.set(event.getCode().ordinal(), true)
+    }
+  }
+
+  val releasedHandler = new EventHandler[KeyEvent]() {
+    override def handle(event: KeyEvent) = {
+      println("released")
+      pressedKeys.set(event.getCode().ordinal(), false)
+    }
+  }
+
+  def isKeyPressed(keyCode: Int): Boolean = pressedKeys.get(keyCode)
+
+}
+
+object JavaFxApp {
+  def main(args: Array[String]) {
+    Application.launch(classOf[JavaFxApp], args: _*)
+  }
+}
+
 class Spec extends FunSuite with Matchers {
 
   test("pattern variant changes tone") {
@@ -328,17 +612,17 @@ class Spec extends FunSuite with Matchers {
 
   test("draw tone on blank") {
     val patternA = new Pattern()
-    
+
     patternA.draw(Position(3, 3), Position(6, 3))
-    
-    Position(3, 3).eachX(3){ position =>
+
+    Position(3, 3).eachX(3) { position =>
       patternA.getTone(position) should not be (None)
     }
-    
+
     patternA.getTone(Position(2, 3)) should be(None)
     patternA.getTone(Position(6, 3)) should be(None)
   }
-  
+
   test("draw tone with existing in front, middle and at the end") {
     val patternA = new Pattern()
     val toneA = new Tone(patternA, Position(0, 2), 2)
@@ -512,204 +796,16 @@ class Spec extends FunSuite with Matchers {
 
 }
 
-class JavaFxApp extends Application {
-
-  override def start(primaryStage: Stage) {
-    primaryStage.setTitle("Sup!")
-
-    val root = new StackPane()
-
-    val canvas = new PianoRollCanvas()
-
-    root.getChildren.add(canvas)
-    root.getChildren.add(KeyHelper)
-
-    primaryStage.setScene(new JavaFxAppScene(root))
-    primaryStage.show()
-  }
-
-  class JavaFxAppScene(root: Parent) extends Scene(root, 800, 800) {
-    setOnKeyPressed(KeyHelper.pressedHandler)
-    setOnKeyReleased(KeyHelper.releasedHandler)
-  }
-
-  class PianoRollCanvas extends Canvas {
-
-    val graphicsContext = getGraphicsContext2D()
-    var cameraPosition = Position(0, 0)
-    var horizontalScale: Int = 10
-    var verticalScale: Int = 20
-
-    val pattern = new Pattern()
-    val toneAPositon = Position(0, 0)
-    val toneA = new Tone(pattern, toneAPositon, 8)
-    pattern.addTone(toneA)
-    
-    setWidth(800)
-    setHeight(800)
-
-    def render() = {
-      Logger.debug("render")
-
-      renderBackground()
-      renderGrid()
-      renderPattern()
-    }
-
-    def renderBackground() = {
-      graphicsContext.clearRect(0, 0, getWidth(), getHeight())
-    }
-
-    def renderGrid() = {
-      graphicsContext.setLineWidth(1.0d)
-      graphicsContext.setStroke(Color.WHITE.darker())
-
-      for (x <- cameraPosition.x / horizontalScale to cameraPosition.x + getWidth().toInt) {
-        graphicsContext.strokeLine(x * horizontalScale, 0, x * horizontalScale, getHeight())
-      }
-
-      graphicsContext.setLineWidth(1.0d)
-      graphicsContext.setStroke(Color.WHITE.darker().darker())
-
-      for (y <- cameraPosition.y / verticalScale to cameraPosition.y + getHeight().toInt) {
-        graphicsContext.strokeLine(0, y * verticalScale, getWidth(), y * verticalScale)
-      }
-    }
-
-    def renderPattern() = {
-      val verticalOffset = 2
-
-      for (x <- cameraPosition.x / horizontalScale to cameraPosition.x + getWidth().toInt) {
-        for (y <- cameraPosition.y / verticalScale to cameraPosition.y + getHeight().toInt) {
-          val position = Position(x, y)
-
-          pattern.getTone(position).foreach { tone =>
-            graphicsContext.setFill(Color.RED)
-            graphicsContext.fillRect(x * horizontalScale, y * verticalScale + verticalOffset, horizontalScale, verticalScale - verticalOffset * 2)
-
-            if (tone.calculatedPosition.equals(position)) {
-              graphicsContext.setFill(Color.BLUE.brighter())
-              graphicsContext.fillRect(x * horizontalScale, y * verticalScale, 3, verticalScale)
-            }
-          }
-        }
-      }
-    }
-
-    var dragFromOption: Option[Position] = None
-    var click = false
-
-    setOnDragDetected(new EventHandler[MouseEvent]() {
-      override def handle(mouseEvent: MouseEvent) = {
-        println("drag detected")
-        startFullDrag();
-        click = false
-
-        val dragFromX = toXGridPosition(mouseEvent.getX())
-        val dragFromY = toYGridPosition(mouseEvent.getY())
-
-        dragFromOption = Some(Position(dragFromX, dragFromY))
-
-        mouseEvent.consume()
-      }
-    })
-
-    setOnMouseDragReleased(new EventHandler[MouseDragEvent]() {
-      override def handle(mouseEvent: MouseDragEvent) = {
-        println("drag released")
-        if (dragFromOption.isDefined) {
-
-          val dragFrom = dragFromOption.get
-
-          val dragToX = toXGridPosition(mouseEvent.getX())
-          val dragToY = toYGridPosition(mouseEvent.getY())
-
-          val dragTo = Position(dragToX + 1, dragToY)
-
-          action(dragFrom, dragTo, mouseEvent.getButton().equals(MouseButton.PRIMARY), mouseEvent.getButton().equals(MouseButton.SECONDARY), KeyHelper.isKeyPressed(KeyCode.CONTROL.ordinal()), KeyHelper.isKeyPressed(KeyCode.ALT.ordinal()))
-
-          println("drag")
-
-          mouseEvent.consume()
-          dragFromOption = None
-        }
-      }
-    })
-
-    setOnMousePressed(new EventHandler[MouseEvent]() {
-      override def handle(mouseEvent: MouseEvent) = {
-        println("pressed")
-        click = true
-      }
-    })
-
-    setOnMouseReleased(new EventHandler[MouseEvent]() {
-      override def handle(mouseEvent: MouseEvent) = {
-        println("released")
-        if (click) {
-
-          val x = toXGridPosition(mouseEvent.getX())
-          val y = toYGridPosition(mouseEvent.getY())
-
-          val position = Position(x, y)
-
-          action(position, position.copy(x = position.x + 1), mouseEvent.getButton().equals(MouseButton.PRIMARY), mouseEvent.getButton().equals(MouseButton.SECONDARY), KeyHelper.isKeyPressed(KeyCode.CONTROL.ordinal()), KeyHelper.isKeyPressed(KeyCode.ALT.ordinal()))
-
-          mouseEvent.consume()
-        }
-      }
-    })
-
-    def action(from: Position, to: Position, leftMouseButton: Boolean, rightMouseButton: Boolean, strgKey: Boolean, altKey: Boolean) {
-      pattern.action(from, to, leftMouseButton, rightMouseButton, strgKey, altKey)
-      render()
-    }
-
-    def toXGridPosition(value: Double) = (value / horizontalScale).toInt
-    def toYGridPosition(value: Double) = (value / verticalScale).toInt
-
-    def toXRenderPosition(value: Int) = value * horizontalScale
-    def toYRenderPosition(value: Int) = value * verticalScale
-
-    render()
-  }
-
-}
-
-object KeyHelper extends Canvas {
-
-  val pressedKeys = new BitSet()
-
-  val pressedHandler = new EventHandler[KeyEvent]() {
-    override def handle(event: KeyEvent) = {
-      println(event.getCode())
-      pressedKeys.set(event.getCode().ordinal(), true)
-    }
-  }
-
-  val releasedHandler = new EventHandler[KeyEvent]() {
-    override def handle(event: KeyEvent) = {
-      println("released")
-      pressedKeys.set(event.getCode().ordinal(), false)
-    }
-  }
-
-  def isKeyPressed(keyCode: Int): Boolean = pressedKeys.get(keyCode)
-
-}
-
-object JavaFxApp {
-  def main(args: Array[String]) {
-    Application.launch(classOf[JavaFxApp], args: _*)
-  }
-}
-
 /*
  * Wie wird eine remove Manipulation realisiert ? length = 0 ?
  * Was passiert mit Konflikten die durch eine Veränderung eines Parents entsteht ? (ähnliche Auflösung wie bei remove/draw ?!) 
  * ... Überlappung / verdecken von 2er Reihe
  * Rerender only on changes
  * Drag Backward
+ * Inkonsistenes Verhalten bei draw X -> Y und X <- Y
  */
+
+
+
 
 
